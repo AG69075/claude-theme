@@ -1,17 +1,20 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
-import type { Ctx, Window } from '../types'
+import type { Ctx, Sub, Window } from '../types'
 
 // Bande lecture seule : lit les chiffres du moteur et dessine. Aucun réseau, aucun fichier, aucun processus.
 const TICK_MS = 30_000
 const TTL_MS = 60 * 60 * 1000 // cache de prompt : 1 h après la dernière requête
 const CELLS = 10
+const SUB_TTL_MS = 15 * 60 * 1000 // un sous-agent reste affiché 15 min
+const short = (m: string): string => m.replace(/^claude-/, '')
 // Palette aurora-noir : surface #090c15, vert #3affc0, violet #9f7bff, ambre #ffc46b.
 const BG = '#090c15', MUTED = '#8996b0', EMPTY = '#1c2336'
 const VIOLET = '#9f7bff', AMBER = '#ffc46b', GREEN = '#3affc0', MINT = '#5dffb5', ICE = '#6da7ec', RED = '#ff6b81'
 
 const windows = atom({ plugin: 'usage-band', key: 'windows' } as const, [] as Window[])
 const ctx = atom({ plugin: 'usage-band', key: 'ctx' } as const, null as Ctx | null)
+const subs = atom({ plugin: 'usage-band', key: 'subs' } as const, [] as Sub[])
 const lastAt = atom({ plugin: 'usage-band', key: 'lastAt' } as const, 0)
 
 const clean = (l: readonly Window[]): Window[] =>
@@ -60,6 +63,15 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // Modèle réellement utilisé par chaque sous-agent (Explore, checker, ...) au moment où il démarre.
+  on('agent.spawn', async ($, e, next) => {
+    const r = await next(e)
+    const at = await $.clock.now()
+    const entry: Sub = { type: e.subagentType ?? 'agent', model: r.model ?? e.model ?? '?', at }
+    await update($, subs, l => [...l.filter(x => at - x.at < SUB_TTL_MS).slice(-2), entry])
+    return r
+  }).catch(($, e, next) => next(e)) // la bande ne bloque jamais le démarrage d'un sous-agent
+
   // Chaque requête du fil principal relit/écrit le cache : son début relance l'heure.
   on('turn.step', async function* ($, e, next) {
     if (!e.agentId) {
@@ -82,6 +94,8 @@ export const register: Register = on => {
     const list = await read($, windows)
     const c = await read($, ctx)
     const at = await read($, lastAt)
+    const model = await $.session.model()
+    const recent = (await read($, subs)).filter(x => now - x.at < SUB_TTL_MS)
 
     const gauge = (name: string, color: string, used: number, extra: string, k: string) => {
       const left = Math.max(0, Math.round((100 - used) * 10) / 10)
@@ -119,6 +133,17 @@ export const register: Register = on => {
     if (five) items.push(gauge('SESSION 5H', AMBER, five.percentUsed, `${Math.round(five.percentUsed)}% · ${resetIn(five.resetsAt, now)}`, '5h'))
     if (seven) items.push(gauge('SEMAINE', GREEN, seven.percentUsed, `${Math.round(seven.percentUsed)}% · ${resetIn(seven.resetsAt, now)}`, '7d'))
 
+    if (model) {
+      items.push(
+        <Box key="model" flexDirection="row" flexShrink={0} marginRight={3}>
+          <Text color={MUTED} bold>MODÈLE </Text>
+          <Text color={VIOLET} bold>{short(model)}</Text>
+          {recent.map((x, i) => (
+            <Text key={`s${i}`} color={MUTED}> · {x.type} <Text color={ICE} bold>{short(x.model)}</Text></Text>
+          ))}
+        </Box>,
+      )
+    }
     if (items.length === 0) {
       return <Box backgroundColor={BG} paddingX={1}><Text color={MUTED}>en attente de la première réponse</Text></Box>
     }
