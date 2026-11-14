@@ -20,3 +20,11 @@ Puis `/reload-plugins` (ou redémarrer la session). Si un autre thème est actif
 ```
 claude plugin uninstall aurora-noir@claude-theme
 ```
+
+## usage-band
+
+Bande au-dessus du prompt : Contexte, Cache (compte à rebours), Session 5 h, Semaine avec temps de reset. Couleurs d'aurora-noir. Voir [plugins/usage-band](plugins/usage-band/README.md).
+
+```
+claude plugin install usage-band@claude-theme
+```

@@ -1,8 +1,18 @@
 {
   "name": "claude-theme",
-  "owner": { "name": "local" },
+  "owner": {
+    "name": "local"
+  },
   "plugins": [
-    { "name": "aurora-noir", "source": "./plugins/aurora-noir", "description": "Aurore boréale très sombre" },
-    { "name": "usage-band", "source": "./usage-band", "description": "Bande Contexte / Cache / Session 5h / Semaine (palette aurora-noir)." }
+    {
+      "name": "aurora-noir",
+      "source": "./plugins/aurora-noir",
+      "description": "Aurore boréale très sombre"
+    },
+    {
+      "name": "usage-band",
+      "source": "./plugins/usage-band",
+      "description": "Bande Contexte / Cache / Session 5h / Semaine (palette aurora-noir)."
+    }
   ]
 }
