@@ -9,13 +9,13 @@ const { theme, problems } = makeColors({
   dark: {
     gray: {
       anchors: {
-        'surface-0': '#05070d',
-        'surface-1': '#090c15',
-        'surface-2': '#0d111c',
-        'surface-3': '#121726',
+        'surface-0': '#0a1020',
+        'surface-1': '#0f172b',
+        'surface-2': '#141e36',
+        'surface-3': '#162039',
         'text-primary': '#ffffff',
         'text-secondary': '#9fadc6',
-        'text-muted': '#7d8aa5',
+        'text-muted': '#8996b0',
       },
     },
   },
@@ -50,7 +50,7 @@ ${soft('green', '#3affc0', 0.11)}${soft('violet', '#9f7bff', 0.1)}${soft('glow',
 
 const LOOK: ThemeSetArgs = {
   colors: theme,
-  backdrop: { scene: 'aurora-noir', glass: { blur: 18, tint: '#05070d', opacity: 0.45 } },
+  backdrop: { scene: 'aurora-noir', glass: { blur: 18, tint: '#020308', opacity: 0.62 } },
 }
 
 export const register: Register = on => {
