@@ -5,7 +5,7 @@ import type { Ctx, Git, Pr, Run, Window } from '../types'
 // Bande lecture seule : lit les chiffres du moteur et dessine. Seule exception : `gh pr view` (lecture) pour le segment PR.
 const TICK_MS = 30_000
 const PR_TICK_MS = 60_000 // la PR de la branche est relue chaque minute, et après un git push / gh pr
-const CELLS = 10
+const CELLS = 8
 // Palette aurora-noir : surface #090c15, vert #3affc0, violet #9f7bff, ambre #ffc46b.
 const BG = '#090c15', MUTED = '#8996b0', EMPTY = '#1c2336'
 const VIOLET = '#9f7bff', AMBER = '#ffc46b', GREEN = '#3affc0', RED = '#ff6b81'
@@ -20,6 +20,8 @@ const pushAt = atom({ plugin: 'usage-band', key: 'pushAt' } as const, 0) // dern
 const RUN_SHOWN_MS = 30 * 60 * 1000 // un run terminé reste affiché 30 min
 const RUN_FAST_MS = 20_000 // relu toutes les 20 s tant qu'un run tourne
 let runActive = false
+const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] // roue d'attente du run en cours
+const SPIN_MS = 250
 let runTick = 0
 
 const ghRun = async ($: EngineInterface, args: string[]) => {
@@ -176,6 +178,8 @@ export const register: Register = on => {
     void fetchGit($)
     void fetchRun($)
     $.clock.every(PR_TICK_MS, () => { void fetchPr($); void fetchGit($) })
+    // La roue d'attente tourne seulement tant qu'un run est en cours : sinon aucun redessin.
+    $.clock.every(SPIN_MS, () => { if (runActive) void $.ui.invalidate('ui.render') })
     // Le run Actions se relit toutes les 20 s quand il tourne, sinon une fois par minute.
     $.clock.every(RUN_FAST_MS, () => {
       runTick++
@@ -238,8 +242,8 @@ export const register: Register = on => {
       const left = Math.max(0, Math.round((100 - used) * 10) / 10)
       const d = dots(used)
       return (
-        <Box key={k} flexDirection="row" flexShrink={0} marginRight={3}>
-          <Text color={MUTED} bold>{name} </Text>
+        <Box key={k} flexDirection="row" flexShrink={0}>
+          <Box width={12} flexShrink={0}><Text color={MUTED} bold>{name}</Text></Box>
           <Text color={color}>{d.on}</Text>
           <Text color={EMPTY}>{d.off}</Text>
           <Text color={color} bold> {extra}</Text>
@@ -248,21 +252,22 @@ export const register: Register = on => {
       )
     }
 
-    const items = []
+    const gauges = [] // colonne de gauche : contexte, session 5 h, semaine, empilés
+    const items = [] // colonne de droite : git, actions, PR, agents
     if (c && c.window > 0) {
       const used = Math.min(100, (c.tokens / c.window) * 100)
       const k = Math.round(c.tokens / 1000)
-      items.push(gauge('CONTEXTE', VIOLET, used, `${Math.round(used)}% · ${k}k/${Math.round(c.window / 1000)}k`, 'ctx'))
+      gauges.push(gauge('CONTEXTE', VIOLET, used, `${Math.round(used)}% · ${k}k/${Math.round(c.window / 1000)}k`, 'ctx'))
     }
     const five = list.find(w => w.kind === 'five_hour')
     const seven = list.find(w => w.kind === 'seven_day')
-    if (five) items.push(gauge('SESSION 5H', AMBER, five.percentUsed, `${Math.round(five.percentUsed)}% · ${resetIn(five.resetsAt, now)}`, '5h'))
-    if (seven) items.push(gauge('SEMAINE', GREEN, seven.percentUsed, `${Math.round(seven.percentUsed)}% · ${resetIn(seven.resetsAt, now)}`, '7d'))
+    if (five) gauges.push(gauge('SESSION 5H', AMBER, five.percentUsed, `${Math.round(five.percentUsed)}% · ${resetIn(five.resetsAt, now)}`, '5h'))
+    if (seven) gauges.push(gauge('SEMAINE', GREEN, seven.percentUsed, `${Math.round(seven.percentUsed)}% · ${resetIn(seven.resetsAt, now)}`, '7d'))
 
     if (g) {
       const dirty = g.changed + g.untracked
       items.push(
-        <Box key="git" flexDirection="row" flexShrink={0} marginRight={3}>
+        <Box key="git" flexDirection="row" flexShrink={1} flexWrap="wrap">
           <Text color={MUTED} bold>GIT </Text>
           <Text color={VIOLET} bold>{g.branch}</Text>
           {g.conflicts > 0 ? <Text color={RED} bold> ⚠{g.conflicts} conflit{g.conflicts > 1 ? 's' : ''}</Text> : null}
@@ -282,7 +287,7 @@ export const register: Register = on => {
       const validated = rn2 !== null && rn2.status === 'completed' && rn2.conclusion === 'success' && Date.parse(rn2.updatedAt) >= pushed
       if (g && g.isWorktree && g.base && pushed > 0 && g.changed + g.untracked + g.conflicts === 0 && g.ahead === 0 && validated) {
         items.push(
-          <Box key="rm" flexDirection="row" flexShrink={0} marginRight={3}>
+          <Box key="rm" flexDirection="row" flexShrink={1} flexWrap="wrap">
             <Text color={GREEN} bold>✓ WORKTREE SUPPRIMABLE </Text>
             <Text color={MUTED}>poussé dans {g.base}, CI réussie</Text>
           </Box>,
@@ -299,8 +304,9 @@ export const register: Register = on => {
         : bad ? { t: 'échec', c: RED }
         : { t: rn.conclusion === 'cancelled' ? 'annulé' : 'ignoré', c: MUTED }
       items.push(
-        <Box key="run" flexDirection="row" flexShrink={0} marginRight={3}>
+        <Box key="run" flexDirection="row" flexShrink={1} flexWrap="wrap">
           <Text color={MUTED} bold>ACTIONS </Text>
+          {rn.status !== 'completed' ? <Text color={AMBER} bold>{SPINNER[Math.floor(now / SPIN_MS) % SPINNER.length]} </Text> : null}
           <Text color={VIOLET} bold>{rn.name}</Text>
           <Text color={MUTED}> · {rn.branch}</Text>
           <Text color={state.c} bold> · {state.t}</Text>
@@ -323,7 +329,7 @@ export const register: Register = on => {
         : p.review === 'REVIEW_REQUIRED' ? { t: 'review en attente', c: AMBER }
         : null
       items.push(
-        <Box key="pr" flexDirection="row" flexShrink={0} marginRight={3}>
+        <Box key="pr" flexDirection="row" flexShrink={1} flexWrap="wrap">
           <Text color={MUTED} bold>PR </Text>
           <Text color={VIOLET} bold>#{p.number}</Text>
           {merged ? <Text color={VIOLET} bold> · fusionnée</Text>
@@ -338,16 +344,21 @@ export const register: Register = on => {
     if (running.length > 0) {
       const names = running.slice(0, 2).map(a => a.description || a.type).join(', ')
       items.push(
-        <Box key="agents" flexDirection="row" flexShrink={0} marginRight={3}>
+        <Box key="agents" flexDirection="row" flexShrink={1} flexWrap="wrap">
           <Text color={MUTED} bold>AGENTS </Text>
           <Text color={AMBER} bold>{running.length} en cours</Text>
           <Text color={MUTED}> · {names}{running.length > 2 ? '…' : ''}</Text>
         </Box>,
       )
     }
-    if (items.length === 0) {
+    if (items.length === 0 && gauges.length === 0) {
       return <Box backgroundColor={BG} paddingX={1}><Text color={MUTED}>en attente de la première réponse</Text></Box>
     }
-    return <Box flexDirection="row" flexWrap="wrap" backgroundColor={BG} paddingX={1}>{items}</Box>
+    return (
+      <Box flexDirection="row" flexWrap="nowrap" backgroundColor={BG} paddingX={1}>
+        {gauges.length > 0 ? <Box flexDirection="column" flexShrink={0} marginRight={3}>{gauges}</Box> : null}
+        {items.length > 0 ? <Box flexDirection="column" flexShrink={1} flexGrow={1}>{items}</Box> : null}
+      </Box>
+    )
   })
 }
