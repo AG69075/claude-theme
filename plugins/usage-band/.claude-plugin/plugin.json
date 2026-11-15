@@ -1,1 +1,1 @@
-{ "name": "usage-band", "version": "0.1.0", "description": "Bande au-dessus du prompt : contexte, cache (compte à rebours), session 5 h, semaine, avec temps de reset.", "types": "./types/index.d.ts" }
+{ "name": "usage-band", "version": "0.2.0", "description": "Bande au-dessus du prompt : contexte, session 5 h, semaine, état git, PR, run GitHub Actions, agents en cours, worktree supprimable.", "types": "./types/index.d.ts" }
